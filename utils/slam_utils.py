@@ -67,7 +67,7 @@ def get_loss_tracking_rgb(config, image, depth, opacity, viewpoint):
     rgb_boundary_threshold = config["Training"]["rgb_boundary_threshold"]
     rgb_pixel_mask = (gt_image.sum(dim=0) > rgb_boundary_threshold).view(*mask_shape)
     rgb_pixel_mask = rgb_pixel_mask * viewpoint.grad_mask
-    l1 = opacity * torch.abs(image * rgb_pixel_mask - gt_image * rgb_pixel_mask)
+    l1 = opacity * torch.abs(image * rgb_pixel_mask - gt_image * rgb_pixel_mask) # 渲染图片和真实图片的LOSS，公式7
     return l1.mean()
 
 
@@ -85,7 +85,7 @@ def get_loss_tracking_rgbd(
     l1_rgb = get_loss_tracking_rgb(config, image, depth, opacity, viewpoint)
     depth_mask = depth_pixel_mask * opacity_mask
     l1_depth = torch.abs(depth * depth_mask - gt_depth * depth_mask)
-    return alpha * l1_rgb + (1 - alpha) * l1_depth.mean()
+    return alpha * l1_rgb + (1 - alpha) * l1_depth.mean() #光度误差和深度误差，论文公式8
 
 
 def get_loss_mapping(config, image, depth, viewpoint, opacity, initialization=False):

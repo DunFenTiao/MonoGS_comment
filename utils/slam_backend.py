@@ -165,7 +165,7 @@ class BackEnd(mp.Process):
 
             keyframes_opt = []
 
-            for cam_idx in range(len(current_window)):
+            for cam_idx in range(len(current_window)): # 建图时，同时用窗口的和随机选两个的
                 viewpoint = viewpoint_stack[cam_idx]
                 keyframes_opt.append(viewpoint)
                 render_pkg = render(
@@ -197,7 +197,7 @@ class BackEnd(mp.Process):
                 radii_acm.append(radii)
                 n_touched_acm.append(n_touched)
 
-            for cam_idx in torch.randperm(len(random_viewpoint_stack))[:2]:
+            for cam_idx in torch.randperm(len(random_viewpoint_stack))[:2]: #随机选两个关键帧WR，为了避免忘记全局地图
                 viewpoint = random_viewpoint_stack[cam_idx]
                 render_pkg = render(
                     viewpoint, self.gaussians, self.pipeline_params, self.background
@@ -227,8 +227,8 @@ class BackEnd(mp.Process):
                 radii_acm.append(radii)
 
             scaling = self.gaussians.get_scaling
-            isotropic_loss = torch.abs(scaling - scaling.mean(dim=1).view(-1, 1))
-            loss_mapping += 10 * isotropic_loss.mean()
+            isotropic_loss = torch.abs(scaling - scaling.mean(dim=1).view(-1, 1)) # 各向同性正则，公式10
+            loss_mapping += 10 * isotropic_loss.mean() # 公式11， 基础的误差在加上iso误差
             loss_mapping.backward()
             gaussian_split = False
             ## Deinsifying / Pruning Gaussians
@@ -242,7 +242,7 @@ class BackEnd(mp.Process):
                 # # compute the visibility of the gaussians
                 # # Only prune on the last iteration and when we have full window
                 if prune:
-                    if len(current_window) == self.config["Training"]["window_size"]:
+                    if len(current_window) == self.config["Training"]["window_size"]: #当窗口满了
                         prune_mode = self.config["Training"]["prune_mode"]
                         prune_coviz = 3
                         self.gaussians.n_obs.fill_(0)
@@ -261,7 +261,7 @@ class BackEnd(mp.Process):
                             to_prune = torch.logical_and(
                                 self.gaussians.n_obs <= prune_coviz, mask
                             )
-                        if to_prune is not None and self.monocular:
+                        if to_prune is not None and self.monocular: # 最新三帧的新高斯，没有被其他3帧看到的，需要被修剪
                             self.gaussians.prune_points(to_prune.cuda())
                             for idx in range((len(current_window))):
                                 current_idx = current_window[idx]

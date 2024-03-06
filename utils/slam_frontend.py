@@ -60,7 +60,7 @@ class FrontEnd(mp.Process):
         viewpoint = self.cameras[cur_frame_idx]
         gt_img = viewpoint.original_image.cuda()
         valid_rgb = (gt_img.sum(dim=0) > rgb_boundary_threshold)[None]
-        if self.monocular:
+        if self.monocular: # 对于单目，随机抽样初始化深度，有深度观测的地方0.2低方差，无观测0.5倍高方差
             if depth is None:
                 initial_depth = 2 * torch.ones(1, gt_img.shape[1], gt_img.shape[2])
                 initial_depth += torch.randn_like(initial_depth) * 0.3
@@ -121,15 +121,15 @@ class FrontEnd(mp.Process):
         viewpoint.update_RT(viewpoint.R_gt, viewpoint.T_gt)
 
         self.kf_indices = []
-        depth_map = self.add_new_keyframe(cur_frame_idx, init=True)
-        self.request_init(cur_frame_idx, viewpoint, depth_map)
+        depth_map = self.add_new_keyframe(cur_frame_idx, init=True) ## 初始化获取深度
+        self.request_init(cur_frame_idx, viewpoint, depth_map) ## 此帧放入backend处理
         self.reset = False
 
     def tracking(self, cur_frame_idx, viewpoint):
         prev = self.cameras[cur_frame_idx - self.use_every_n_frames]
         viewpoint.update_RT(prev.R, prev.T)
 
-        opt_params = []
+        opt_params = [] ## 设置优化变量参数
         opt_params.append(
             {
                 "params": [viewpoint.cam_rot_delta],
@@ -161,7 +161,7 @@ class FrontEnd(mp.Process):
 
         pose_optimizer = torch.optim.Adam(opt_params)
         for tracking_itr in range(self.tracking_itr_num):
-            render_pkg = render(
+            render_pkg = render( #渲染
                 viewpoint, self.gaussians, self.pipeline_params, self.background
             )
             image, depth, opacity = (
@@ -173,11 +173,11 @@ class FrontEnd(mp.Process):
             loss_tracking = get_loss_tracking(
                 self.config, image, depth, opacity, viewpoint
             )
-            loss_tracking.backward()
+            loss_tracking.backward() ## 更新损失
 
             with torch.no_grad():
                 pose_optimizer.step()
-                converged = update_pose(viewpoint)
+                converged = update_pose(viewpoint) ## 更新视角
 
             if tracking_itr % 10 == 0:
                 self.q_main2vis.put(
@@ -201,7 +201,7 @@ class FrontEnd(mp.Process):
         last_keyframe_idx,
         cur_frame_visibility_filter,
         occ_aware_visibility,
-    ):
+    ):  
         kf_translation = self.config["Training"]["kf_translation"]
         kf_min_translation = self.config["Training"]["kf_min_translation"]
         kf_overlap = self.config["Training"]["kf_overlap"]
@@ -222,7 +222,7 @@ class FrontEnd(mp.Process):
             cur_frame_visibility_filter, occ_aware_visibility[last_keyframe_idx]
         ).count_nonzero()
         point_ratio_2 = intersection / union
-        return (point_ratio_2 < kf_overlap and dist_check2) or dist_check
+        return (point_ratio_2 < kf_overlap and dist_check2) or dist_check # 和上个关键帧移动距离足够大，或者移动距离稍小但是overlap小于90%
 
     def add_to_window(
         self, cur_frame_idx, cur_frame_visibility_filter, occ_aware_visibility, window
@@ -252,7 +252,7 @@ class FrontEnd(mp.Process):
             if not self.initialized:
                 cut_off = 0.4
             if point_ratio_2 <= cut_off:
-                to_remove.append(kf_idx)
+                to_remove.append(kf_idx) #管理窗口，检查交并比和重叠系数
 
         if to_remove:
             window.remove(to_remove[-1])
@@ -314,7 +314,7 @@ class FrontEnd(mp.Process):
             torch.cuda.empty_cache()
 
     def run(self):
-        cur_frame_idx = 0
+        cur_frame_idx = 0 #当前帧序号
         projection_matrix = getProjectionMatrix2(
             znear=0.01,
             zfar=100.0,
@@ -374,9 +374,9 @@ class FrontEnd(mp.Process):
                 viewpoint = Camera.init_from_dataset(
                     self.dataset, cur_frame_idx, projection_matrix
                 )
-                viewpoint.compute_grad_mask(self.config)
+                viewpoint.compute_grad_mask(self.config) 
 
-                self.cameras[cur_frame_idx] = viewpoint
+                self.cameras[cur_frame_idx] = viewpoint ## 获得此相机的梯度
 
                 if self.reset:
                     self.initialize(cur_frame_idx, viewpoint)
@@ -412,7 +412,7 @@ class FrontEnd(mp.Process):
                 last_keyframe_idx = self.current_window[0]
                 check_time = (cur_frame_idx - last_keyframe_idx) >= self.kf_interval
                 curr_visibility = (render_pkg["n_touched"] > 0).long()
-                create_kf = self.is_keyframe(
+                create_kf = self.is_keyframe( #是否为关键帧
                     cur_frame_idx,
                     last_keyframe_idx,
                     curr_visibility,
@@ -456,7 +456,7 @@ class FrontEnd(mp.Process):
                     )
                 else:
                     self.cleanup(cur_frame_idx)
-                cur_frame_idx += 1
+                cur_frame_idx += 1 # 完成一帧tracking，序号更新
 
                 if (
                     self.save_results
